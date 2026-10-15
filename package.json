@@ -1,0 +1,14 @@
+{
+  "name": "sdf3d-converter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "2D SDF → 严格 3D SDF 转换器（浏览器内运行官方 RDKit WASM，ETKDGv3 + MMFF94/UFF）",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "pages:deploy": "wrangler pages deploy public"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

@@ -1,0 +1,6 @@
+/rdkit/RDKit_minimal.wasm
+  Content-Type: application/wasm
+  Cache-Control: public, max-age=31536000, immutable
+
+/rdkit/RDKit_minimal.js
+  Cache-Control: public, max-age=31536000, immutable

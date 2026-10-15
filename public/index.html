@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SDF 2D → 3D 转换器 · RDKit ETKDGv3</title>
+<meta name="description" content="在浏览器内使用官方 RDKit（WebAssembly）把 2D SDF/MOL 转换为带真实三维坐标的 3D SDF。ETKDGv3 距离几何 + MMFF94/UFF 力场优化。">
+<style>
+  :root{
+    --bg:#0b0e13; --panel:#141922; --panel2:#1b2230; --line:#28313f;
+    --fg:#e8edf5; --muted:#8b97a8; --accent:#4dabf7; --accent2:#2f9e44;
+    --ok:#37b24d; --warn:#f59f00; --err:#f03e3e;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans CJK SC",sans-serif}
+  header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:var(--panel)}
+  header h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:12px}
+  .badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .badge.ready{color:var(--ok);border-color:#1f5130}
+  .badge.load{color:var(--warn);border-color:#5a4210}
+  .badge.err{color:var(--err);border-color:#5a1f1f}
+  main{display:grid;grid-template-columns:1fr 1fr;height:calc(100vh - 55px)}
+  @media (max-width:960px){main{grid-template-columns:1fr;height:auto}}
+  .col{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+  .col:last-child{border-right:none}
+  .bar{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+  .bar .grow{flex:1}
+  button{background:var(--accent);color:#04121f;border:0;padding:7px 13px;border-radius:7px;font-weight:650;cursor:pointer;font-size:13px;transition:.12s}
+  button:hover{filter:brightness(1.08)}
+  button:disabled{opacity:.45;cursor:not-allowed;filter:none}
+  button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+  button.ghost:hover{background:var(--panel2)}
+  button.ok{background:var(--accent2);color:#fff}
+  select,input[type=number]{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12px}
+  label.chk{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;cursor:pointer;user-select:none}
+  textarea{flex:1;width:100%;min-height:280px;resize:none;border:0;outline:none;background:var(--panel2);color:var(--fg);
+           font:12px/1.5 var(--mono);padding:12px;white-space:pre;overflow:auto;tab-size:2}
+  .wrap{position:relative;flex:1;display:flex;min-height:300px}
+  .view{flex:1;background:radial-gradient(circle at 50% 38%,#1a2130,#0b0e13 72%);cursor:grab}
+  .view:active{cursor:grabbing}
+  .legend{position:absolute;right:12px;bottom:10px;font-size:11px;color:var(--muted);background:rgba(11,14,19,.72);
+          padding:5px 9px;border-radius:7px;pointer-events:none;border:1px solid var(--line)}
+  .status{font-size:12px;color:var(--muted);padding:7px 12px;border-top:1px solid var(--line);background:var(--panel);white-space:pre-wrap;max-height:120px;overflow:auto;font-family:var(--mono)}
+  .status.ok{color:var(--ok)} .status.err{color:var(--err)} .status.warn{color:var(--warn)}
+  .drop{border:1.5px dashed var(--line);border-radius:10px;padding:20px;text-align:center;color:var(--muted);margin:12px;cursor:pointer;transition:.15s}
+  .drop.hot{border-color:var(--accent);color:var(--accent);background:rgba(77,171,247,.06)}
+  details.meta{font-size:11px;color:var(--muted);padding:6px 12px;border-top:1px solid var(--line);background:var(--panel)}
+  details.meta summary{cursor:pointer}
+  code{font-family:var(--mono);color:#b8c4d6;background:var(--panel2);padding:1px 4px;border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>SDF 2D → 3D 转换器</h1>
+  <span class="badge" id="rdkitStatus">RDKit 加载中…</span>
+  <span class="sub">官方 RDKit WebAssembly · ETKDGv3 距离几何 + MMFF94/UFF 力场 · 全部本地计算</span>
+</header>
+
+<main>
+  <!-- 左：输入 -->
+  <section class="col">
+    <div class="bar">
+      <button id="btnLoadEx" class="ghost">载入示例</button>
+      <button id="btnFile" class="ghost">打开文件…</button>
+      <input type="file" id="fileInput" accept=".sdf,.mol,.sd" style="display:none">
+      <button id="btnClear" class="ghost">清空</button>
+    </div>
+    <div id="drop" class="drop">把 .sdf / .mol 文件拖到这里（或点击选择）</div>
+    <textarea id="input" spellcheck="false" placeholder="在此粘贴 2D SDF / MOL 文本（支持多条记录，$$$$ 分隔）…"></textarea>
+    <div class="status" id="statusIn">等待输入。</div>
+  </section>
+
+  <!-- 右：3D 输出 -->
+  <section class="col">
+    <div class="bar">
+      <button id="btnConvert" disabled>转换为 3D</button>
+      <label class="chk"><input type="checkbox" id="optEmbedH" checked> 补氢</label>
+      <label class="chk">力场
+        <select id="optFF">
+          <option value="MMFF" selected>MMFF94（缺失则 UFF）</option>
+          <option value="UFF">UFF</option>
+          <option value="none">不优化</option>
+        </select>
+      </label>
+      <label class="chk">随机种子 <input type="number" id="optSeed" value="42" style="width:70px"></label>
+      <span class="grow"></span>
+      <button id="btnCopy" class="ghost" disabled>复制</button>
+      <button id="btnDownload" class="ok" disabled>下载 3D SDF</button>
+    </div>
+    <div class="wrap">
+      <canvas class="view" id="view"></canvas>
+      <div class="legend">拖动旋转 · 滚轮缩放 · 双击复位</div>
+    </div>
+    <div class="bar" style="border-top:1px solid var(--line);border-bottom:none">
+      <label class="chk"><input type="checkbox" id="optStick"> 线框</label>
+      <label class="chk"><input type="checkbox" id="optSpin"> 自转</label>
+      <span class="grow"></span>
+      <span class="badge" id="molInfo">—</span>
+    </div>
+    <div class="status" id="statusOut">等待转换。</div>
+    <details class="meta">
+      <summary>方法说明 / 可靠性</summary>
+      <p>转换在浏览器内由 <b>官方 RDKit（编译为 WebAssembly）</b> 完成，算法与 Python 版 <code>rdkit</code> 完全一致：</p>
+      <p>① 解析 molfile（V2000/V3000）；② <code>AddHs</code> 补齐氢；③ <code>EmbedMolecule</code> 用 <b>ETKDGv3</b>（实验扭转修正的距离几何）生成三维坐标；④ 用 <b>MMFF94</b> 或 <b>UFF</b> 力场做几何优化。无 MMFF 参数时自动回退 UFF。</p>
+      <p>本 WASM 由 RDKit 源码 <code>Code/MinimalLib</code> 自行编译，并新增 3D 接口绑定。化学上与 RDKit 原生实现一致，非近似启发式。</p>
+    </details>
+  </section>
+</main>
+
+<script src="/rdkit/RDKit_minimal.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
